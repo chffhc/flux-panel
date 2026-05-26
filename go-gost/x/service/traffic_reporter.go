@@ -3,9 +3,15 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -18,6 +24,7 @@ import (
 var httpReportURL string
 var configReportURL string
 var httpAESCrypto *crypto.AESCrypto // 新增：HTTP上报加密器
+var httpReportSecret string
 
 // TrafficReportItem 流量报告项（压缩格式）
 type TrafficReportItem struct {
@@ -27,8 +34,13 @@ type TrafficReportItem struct {
 }
 
 func SetHTTPReportURL(addr string, secret string) {
-	httpReportURL = "http://" + addr + "/flow/upload?secret=" + secret
-	configReportURL = "http://" + addr + "/flow/config?secret=" + secret
+	httpReportSecret = secret
+	scheme := "https"
+	if os.Getenv("FLUX_ALLOW_INSECURE_NODE_HTTP") == "true" {
+		scheme = "http"
+	}
+	httpReportURL = scheme + "://" + addr + "/flow/upload"
+	configReportURL = scheme + "://" + addr + "/flow/config"
 
 	// 创建 AES 加密器
 	var err error
@@ -80,6 +92,7 @@ func sendTrafficReport(ctx context.Context, reportItems TrafficReportItem) (bool
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "GOST-Traffic-Reporter/1.0")
+	signFluxRequest(req, requestBody, httpReportSecret)
 
 	client := &http.Client{
 		Timeout: 5 * time.Second,
@@ -156,6 +169,7 @@ func sendConfigReport(ctx context.Context) (bool, error) {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Config-Reporter/1.0")
+	signFluxRequest(req, requestBody, httpReportSecret)
 
 	client := &http.Client{
 		Timeout: 10 * time.Second, // 配置上报可以稍长一些
@@ -284,4 +298,22 @@ func getConfigData() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	resp.Config.Write(buf, "json")
 	return buf.Bytes(), nil
+}
+
+func signFluxRequest(req *http.Request, body []byte, secret string) {
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	nonceBytes := make([]byte, 16)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		nonceBytes = []byte(fmt.Sprintf("%d", time.Now().UnixNano()))
+	}
+	nonce := hex.EncodeToString(nonceBytes)
+	bodyHash := sha256.Sum256(body)
+	canonical := strings.ToUpper(req.Method) + "\n" + req.URL.Path + "\n" + timestamp + "\n" + nonce + "\n" + hex.EncodeToString(bodyHash[:])
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(canonical))
+	signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	req.Header.Set("X-Flux-Node-Secret", secret)
+	req.Header.Set("X-Flux-Timestamp", timestamp)
+	req.Header.Set("X-Flux-Nonce", nonce)
+	req.Header.Set("X-Flux-Signature", signature)
 }

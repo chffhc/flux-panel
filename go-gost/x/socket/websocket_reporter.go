@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync" // 新增：用于管理连接状态的互斥锁
 	"time"
@@ -94,6 +98,7 @@ type WebSocketReporter struct {
 	connecting     bool              // 新增：正在连接状态
 	connMutex      sync.Mutex        // 新增：连接状态锁
 	aesCrypto      *crypto.AESCrypto // 新增：AES加密器
+	secret         string
 }
 
 // NewWebSocketReporter 创建一个新的WebSocket报告器
@@ -119,6 +124,7 @@ func NewWebSocketReporter(serverURL string, secret string) *WebSocketReporter {
 		connected:      false,
 		connecting:     false,
 		aesCrypto:      aesCrypto,
+		secret:         secret,
 	}
 }
 
@@ -200,7 +206,15 @@ func (w *WebSocketReporter) connect() error {
 	dialer := websocket.DefaultDialer
 	dialer.HandshakeTimeout = 10 * time.Second
 
-	conn, _, err := dialer.Dial(u.String(), nil)
+	headers := http.Header{}
+	headers.Set("X-Flux-Node-Secret", w.secret)
+	headers.Set("X-Flux-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+	nonceBytes := make([]byte, 16)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		nonceBytes = []byte(fmt.Sprintf("%d", time.Now().UnixNano()))
+	}
+	headers.Set("X-Flux-Nonce", hex.EncodeToString(nonceBytes))
+	conn, _, err := dialer.Dial(u.String(), headers)
 	if err != nil {
 		return fmt.Errorf("连接WebSocket失败: %v", err)
 	}
@@ -934,8 +948,12 @@ func getMemoryInfo() MemoryInfo {
 // StartWebSocketReporterWithConfig 使用配置启动WebSocket报告器
 func StartWebSocketReporterWithConfig(Addr string, Secret string, Version string) *WebSocketReporter {
 
-	// 构建包含本机IP的WebSocket URL
-	var fullURL = "ws://" + Addr + "/system-info?type=1&secret=" + Secret + "&version=" + Version
+	// 构建不包含 secret 的 WebSocket URL；节点密钥仅通过握手 Header 发送，避免进入日志/代理 URL。
+	scheme := "wss"
+	if os.Getenv("FLUX_ALLOW_INSECURE_NODE_HTTP") == "true" {
+		scheme = "ws"
+	}
+	var fullURL = scheme + "://" + Addr + "/system-info?type=1&version=" + Version
 
 	fmt.Printf("🔗 WebSocket连接URL: %s\n", fullURL)
 

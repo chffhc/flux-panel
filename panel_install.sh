@@ -7,11 +7,18 @@ export LC_ALL=C
 
 
 
-# 全局下载地址配置
-DOCKER_COMPOSEV4_URL="https://raw.githubusercontent.com/BrunuhVille/flux-panel/refs/heads/main/docker-compose-v4.yml"
-DOCKER_COMPOSEV6_URL="https://raw.githubusercontent.com/BrunuhVille/flux-panel/refs/heads/main/docker-compose-v6.yml"
-GOST_SQL_URL="https://raw.githubusercontent.com/BrunuhVille/flux-panel/refs/heads/main/gost.sql"
-PROXY_SH_URL="https://raw.githubusercontent.com/BrunuhVille/flux-panel/refs/heads/main/proxy.sh"
+# 全局下载地址配置：默认使用本 fork，且使用内置 SHA256 校验下载内容。
+FLUX_PANEL_REPO="${FLUX_PANEL_REPO:-chffhc/flux-panel}"
+FLUX_PANEL_REF="${FLUX_PANEL_REF:-673f74f}"
+RAW_BASE="https://raw.githubusercontent.com/${FLUX_PANEL_REPO}/${FLUX_PANEL_REF}"
+DOCKER_COMPOSEV4_URL="${RAW_BASE}/docker-compose-v4.yml"
+DOCKER_COMPOSEV6_URL="${RAW_BASE}/docker-compose-v6.yml"
+GOST_SQL_URL="${RAW_BASE}/gost.sql"
+PROXY_SH_URL="${RAW_BASE}/proxy.sh"
+DOCKER_COMPOSEV4_SHA256="${DOCKER_COMPOSEV4_SHA256:-c4f79310c80a0d17554c339467d5e09dbdbb57d67530d188f61943cf2643bf1c}"
+DOCKER_COMPOSEV6_SHA256="${DOCKER_COMPOSEV6_SHA256:-d7c77ada77c398d891e85bc8f9fd08c07b2439e2805e2463ffa84492245dc789}"
+GOST_SQL_SHA256="${GOST_SQL_SHA256:-2ae8ec7b9b0a90d87a8eaf20fc4996557beea0479489a3099628df44c07faf60}"
+PROXY_SH_SHA256="${PROXY_SH_SHA256:-f17ba5924398ae6a25451e73fcd89dad5b23b3e65eeea772a0be4659161dad42}"
 
 COUNTRY=$(curl -s https://ipinfo.io/country)
 if [ "$COUNTRY" = "CN" ]; then
@@ -22,7 +29,31 @@ if [ "$COUNTRY" = "CN" ]; then
     PROXY_SH_URL="https://ghfast.top/${PROXY_SH_URL}"
 fi
 
+verify_sha256() {
+  local file="$1"
+  local expected="$2"
+  if [[ -z "$expected" ]]; then
+    echo "❌ 缺少 $file 的 SHA256，拒绝使用未校验下载内容"
+    exit 1
+  fi
+  local actual
+  actual=$(sha256sum "$file" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$file" | awk '{print $1}')
+  if [[ "$actual" != "$expected" ]]; then
+    echo "❌ $file SHA256 校验失败"
+    echo "期望: $expected"
+    echo "实际: $actual"
+    rm -f "$file"
+    exit 1
+  fi
+}
 
+download_checked() {
+  local url="$1"
+  local dest="$2"
+  local sha="$3"
+  curl -fL --proto '=https' --tlsv1.2 -o "$dest" "$url"
+  verify_sha256 "$dest" "$sha"
+}
 
 # 根据IPv6支持情况选择docker-compose URL
 get_docker_compose_url() {
@@ -199,14 +230,18 @@ install_panel() {
   echo "🔽 下载必要文件..."
   DOCKER_COMPOSE_URL=$(get_docker_compose_url)
   echo "📡 选择配置文件：$(basename "$DOCKER_COMPOSE_URL")"
-  curl -L -o docker-compose.yml "$DOCKER_COMPOSE_URL"
+  if [[ "$DOCKER_COMPOSE_URL" == *"docker-compose-v6.yml" ]]; then
+    download_checked "$DOCKER_COMPOSE_URL" docker-compose.yml "$DOCKER_COMPOSEV6_SHA256"
+  else
+    download_checked "$DOCKER_COMPOSE_URL" docker-compose.yml "$DOCKER_COMPOSEV4_SHA256"
+  fi
 
   # 检查 gost.sql 是否已存在
   if [[ -f "gost.sql" ]]; then
     echo "⏭️ 跳过下载: gost.sql (使用当前位置的文件)"
   else
     echo "📡 下载数据库初始化文件..."
-    curl -L -o gost.sql "$GOST_SQL_URL"
+    download_checked "$GOST_SQL_URL" gost.sql "$GOST_SQL_SHA256"
   fi
   echo "✅ 文件准备完成"
 
@@ -246,7 +281,11 @@ update_panel() {
   echo "🔽 下载最新配置文件..."
   DOCKER_COMPOSE_URL=$(get_docker_compose_url)
   echo "📡 选择配置文件：$(basename "$DOCKER_COMPOSE_URL")"
-  curl -L -o docker-compose.yml "$DOCKER_COMPOSE_URL"
+  if [[ "$DOCKER_COMPOSE_URL" == *"docker-compose-v6.yml" ]]; then
+    download_checked "$DOCKER_COMPOSE_URL" docker-compose.yml "$DOCKER_COMPOSEV6_SHA256"
+  else
+    download_checked "$DOCKER_COMPOSE_URL" docker-compose.yml "$DOCKER_COMPOSEV4_SHA256"
+  fi
   echo "✅ 下载完成"
 
   # 自动检测并配置 IPv6 支持
@@ -1032,7 +1071,11 @@ uninstall_panel() {
     echo "⚠️ 未找到 docker-compose.yml 文件，正在下载以完成卸载..."
     DOCKER_COMPOSE_URL=$(get_docker_compose_url)
     echo "📡 选择配置文件：$(basename "$DOCKER_COMPOSE_URL")"
-    curl -L -o docker-compose.yml "$DOCKER_COMPOSE_URL"
+    if [[ "$DOCKER_COMPOSE_URL" == *"docker-compose-v6.yml" ]]; then
+    download_checked "$DOCKER_COMPOSE_URL" docker-compose.yml "$DOCKER_COMPOSEV6_SHA256"
+  else
+    download_checked "$DOCKER_COMPOSE_URL" docker-compose.yml "$DOCKER_COMPOSEV4_SHA256"
+  fi
     echo "✅ docker-compose.yml 下载完成"
   fi
 

@@ -18,7 +18,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     private CorsConfiguration buildConfig() {
         CorsConfiguration corsConfiguration = new CorsConfiguration();
-        corsConfiguration.addAllowedOrigin("*");
+        for (String origin : System.getenv().getOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:6366").split(",")) {
+            corsConfiguration.addAllowedOriginPattern(origin.trim());
+        }
         corsConfiguration.addAllowedHeader("*");
         corsConfiguration.addAllowedMethod("*");
         corsConfiguration.addExposedHeader("Authorization");
@@ -35,7 +37,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins("*")
+                .allowedOriginPatterns(System.getenv().getOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:6366").split(","))
                 .allowedMethods("GET", "POST", "DELETE", "PUT")
                 .maxAge(3600);
     }
@@ -56,7 +58,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 添加JWT拦截器，不拦截登录接口
         registry.addInterceptor(jwtInterceptor())
                 .addPathPatterns("/api/**")
-                .excludePathPatterns("/flow/**")
                 .excludePathPatterns("/api/v1/open_api/**")
                 .excludePathPatterns("/api/v1/config/get")
                 .excludePathPatterns("/api/v1/user/login")

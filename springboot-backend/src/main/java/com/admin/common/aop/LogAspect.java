@@ -3,7 +3,7 @@ package com.admin.common.aop;
 
 import cn.hutool.core.util.ArrayUtil;
 import com.admin.common.utils.JwtUtil;
-import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson2.JSON;
 import com.admin.common.utils.HttpContextUtils;
 import com.admin.common.utils.IpUtils;
 import lombok.extern.slf4j.Slf4j;
