@@ -259,7 +259,7 @@ curl -L https://your-panel-server:6365/agent/install | bash -s -- --server=your-
 - 本项目为sub-store提供流量查询API以便查询流量日期信息
 - 格式如下  
 ```
-http(s)://<面板连接地址>/api/v1/open_api/sub_store?user=<用户名>&pwd=<密码>&tunnel=<隧道ID>
+http(s)://<面板连接地址>/api/v1/open_api/sub_store?tunnel=<隧道ID> （用户名/密码请用 POST body 或 Authorization 方式提交，避免写入 URL 日志）
 ```
 - 修改完成后填入sub-store订阅流量信息栏即可实现查询
 **注意**

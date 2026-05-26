@@ -1,14 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import legacy from '@vitejs/plugin-legacy'
 
 export default defineConfig({
   plugins: [
-    react(),
-    legacy({
-      targets: ['defaults', 'not IE 11']
-    })
+    react()
   ],
   base: './',    
   resolve: {
@@ -21,6 +17,7 @@ export default defineConfig({
     host: '0.0.0.0'
   },
   build: {
+    target: 'es2020',
     outDir: 'dist',
     sourcemap: false,
     minify: false,  

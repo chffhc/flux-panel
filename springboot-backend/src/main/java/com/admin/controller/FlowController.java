@@ -7,15 +7,17 @@ import com.admin.common.lang.R;
 import com.admin.common.task.CheckGostConfigAsync;
 import com.admin.common.utils.AESCrypto;
 import com.admin.common.utils.GostUtil;
+import com.admin.common.utils.NodeAuthUtil;
 import com.admin.entity.*;
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.springframework.web.bind.annotation.*;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
@@ -45,7 +47,6 @@ import java.util.stream.Collectors;
  */
 @RestController
 @RequestMapping("/flow")
-@CrossOrigin
 @Slf4j
 public class FlowController extends BaseController {
 
@@ -101,7 +102,9 @@ public class FlowController extends BaseController {
 
     @PostMapping("/config")
     @LogAnnotation
-    public String config(@RequestBody String rawData, String secret) {
+    public String config(@RequestBody String rawData, HttpServletRequest request) {
+        String secret = NodeAuthUtil.secretFrom(request);
+        if (!NodeAuthUtil.verify(request, rawData, secret)) return SUCCESS_RESPONSE;
         Node node = nodeService.getOne(new QueryWrapper<Node>().eq("secret", secret));
         if (node == null) return SUCCESS_RESPONSE;
 
@@ -137,9 +140,10 @@ public class FlowController extends BaseController {
      */
     @RequestMapping("/upload")
     @LogAnnotation
-    public String uploadFlowData(@RequestBody String rawData, String secret) {
+    public String uploadFlowData(@RequestBody String rawData, HttpServletRequest request) {
+        String secret = NodeAuthUtil.secretFrom(request);
         // 1. 验证节点权限
-        if (!isValidNode(secret)) {
+        if (!NodeAuthUtil.verify(request, rawData, secret) || !isValidNode(secret)) {
             return SUCCESS_RESPONSE;
         }
 

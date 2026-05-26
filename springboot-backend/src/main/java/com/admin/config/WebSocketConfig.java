@@ -27,7 +27,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry webSocketHandlerRegistry) {
         webSocketHandlerRegistry
                 .addHandler(myHandler(), "/system-info")
-                .setAllowedOrigins("*")
+                .setAllowedOriginPatterns(System.getenv().getOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:6366").split(","))
                 .addInterceptors(webSocketInterceptor);
     }
 

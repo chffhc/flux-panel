@@ -8,7 +8,7 @@ import com.admin.common.dto.*;
 import com.admin.common.lang.R;
 import com.admin.common.utils.GostUtil;
 import com.admin.common.utils.JwtUtil;
-import com.admin.common.utils.Md5Util;
+import com.admin.common.utils.PasswordUtil;
 import com.admin.entity.*;
 import com.admin.mapper.ForwardMapper;
 import com.admin.mapper.UserMapper;
@@ -76,9 +76,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private static final String ERROR_CURRENT_PASSWORD_WRONG = "当前密码错误";
     private static final String ERROR_PASSWORD_NOT_MATCH = "新密码和确认密码不匹配";
 
-    /** 默认账号密码 */
-    private static final String DEFAULT_USERNAME = "admin_user";
-    private static final String DEFAULT_PASSWORD = "admin_user";
     
     /** 登录响应字段名 */
     private static final String LOGIN_TOKEN_FIELD = "token";
@@ -148,10 +145,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         // 3. 生成令牌并返回用户信息
         User user = validationResult.getUser();
+        boolean requirePasswordChange = PasswordUtil.needsRehash(user.getPwd());
+        if (requirePasswordChange) {
+            User rehashUser = new User();
+            rehashUser.setId(user.getId());
+            rehashUser.setPwd(PasswordUtil.hash(loginDto.getPassword()));
+            rehashUser.setUpdatedTime(System.currentTimeMillis());
+            this.updateById(rehashUser);
+        }
         String token = JwtUtil.generateToken(user);
         
-        // 4. 检查是否使用默认账号密码
-        boolean requirePasswordChange = isDefaultCredentials(loginDto.getUsername(), loginDto.getPassword());
+        // 4. 旧 MD5 凭据登录后强制提示修改密码
         
         return R.ok(MapUtil.builder()
                 .put(LOGIN_TOKEN_FIELD, token)
@@ -314,8 +318,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             // 3. 验证当前密码是否正确
             User user = currentUser.getUser();
-            String currentPasswordMd5 = Md5Util.md5(changePasswordDto.getCurrentPassword());
-            if (!user.getPwd().equals(currentPasswordMd5)) {
+            if (!PasswordUtil.matches(changePasswordDto.getCurrentPassword(), user.getPwd())) {
                 return R.err(ERROR_CURRENT_PASSWORD_WRONG);
             }
 
@@ -331,7 +334,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             User updateUser = new User();
             updateUser.setId(user.getId());
             updateUser.setUser(changePasswordDto.getNewUsername());
-            updateUser.setPwd(Md5Util.md5(changePasswordDto.getNewPassword()));
+            updateUser.setPwd(PasswordUtil.hash(changePasswordDto.getNewPassword()));
             updateUser.setUpdatedTime(System.currentTimeMillis());
             
             boolean result = this.updateById(updateUser);
@@ -376,7 +379,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             return LoginValidationResult.error(ERROR_LOGIN_CREDENTIALS);
         }
         
-        if (!user.getPwd().equals(Md5Util.md5(loginDto.getPassword()))) {
+        if (!PasswordUtil.matches(loginDto.getPassword(), user.getPwd())) {
             return LoginValidationResult.error(ERROR_LOGIN_CREDENTIALS);
         }
         
@@ -385,17 +388,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         
         return LoginValidationResult.success(user);
-    }
-
-    /**
-     * 检查是否使用默认账号密码
-     * 
-     * @param username 用户名
-     * @param password 密码
-     * @return 是否是默认凭据
-     */
-    private boolean isDefaultCredentials(String username, String password) {
-        return DEFAULT_USERNAME.equals(username) || DEFAULT_PASSWORD.equals(password);
     }
 
     /**
@@ -431,7 +423,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         BeanUtils.copyProperties(userDto, user);
         
         // 设置加密密码
-        user.setPwd(Md5Util.md5(userDto.getPwd()));
+        user.setPwd(PasswordUtil.hash(userDto.getPwd()));
         
         // 设置默认属性
         user.setStatus(userDto.getStatus() != null ? userDto.getStatus() : USER_STATUS_ACTIVE);
@@ -469,7 +461,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         
         // 处理密码更新
         if (StrUtil.isNotBlank(userUpdateDto.getPwd())) {
-            user.setPwd(Md5Util.md5(userUpdateDto.getPwd()));
+            user.setPwd(PasswordUtil.hash(userUpdateDto.getPwd()));
         } else {
             user.setPwd(null); // 不更新密码字段
         }

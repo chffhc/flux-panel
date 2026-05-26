@@ -126,10 +126,12 @@ export default function NodePage() {
     
     // 构建WebSocket URL，使用axios的baseURL
     const baseUrl = axios.defaults.baseURL || (import.meta.env.VITE_API_BASE ? `${import.meta.env.VITE_API_BASE}/api/v1/` : '/api/v1/');
-    const wsUrl = baseUrl.replace(/^http/, 'ws').replace(/\/api\/v1\/$/, '') + `/system-info?type=0&secret=${localStorage.getItem('token')}`;
+    const wsUrl = baseUrl.replace(/^http/, 'ws').replace(/\/api\/v1\/$/, '') + `/system-info?type=0`;
+    const token = localStorage.getItem('token') || '';
+    const tokenProtocol = token ? `flux-jwt.${btoa(token).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}` : 'flux-jwt.empty';
     
     try {
-      websocketRef.current = new WebSocket(wsUrl);
+      websocketRef.current = new WebSocket(wsUrl, [tokenProtocol]);
       
       websocketRef.current.onopen = () => {
         reconnectAttemptsRef.current = 0;

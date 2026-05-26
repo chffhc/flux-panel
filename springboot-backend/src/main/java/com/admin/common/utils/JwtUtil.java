@@ -10,6 +10,7 @@ import javax.annotation.PostConstruct;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
@@ -27,7 +28,7 @@ public class JwtUtil {
     private static String SECRET_KEY;
     
     // token有效期，7天
-    private static final long EXPIRE_TIME = 90L * 24 * 60 * 60 * 1000;
+    private static final long EXPIRE_TIME = 7L * 24 * 60 * 60 * 1000;
     // 算法
     private static final String ALGORITHM = "HmacSHA256";
 
@@ -102,7 +103,7 @@ public class JwtUtil {
 
             // 验证签名
             String expectedSignature = calculateSignature(encodedHeader, encodedPayload);
-            if (!expectedSignature.equals(signature)) {
+            if (!MessageDigest.isEqual(expectedSignature.getBytes(StandardCharsets.UTF_8), signature.getBytes(StandardCharsets.UTF_8))) {
                 return false;
             }
 

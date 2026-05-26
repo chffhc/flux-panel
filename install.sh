@@ -1,6 +1,9 @@
 #!/bin/bash
 # 下载地址
-DOWNLOAD_URL="https://github.com/BrunuhVille/flux-panel/releases/download/gost-latest/gost"
+FLUX_PANEL_REPO="${FLUX_PANEL_REPO:-chffhc/flux-panel}"
+GOST_RELEASE_TAG="${GOST_RELEASE_TAG:-gost-673f74f}"
+DOWNLOAD_URL="${DOWNLOAD_URL:-https://github.com/${FLUX_PANEL_REPO}/releases/download/${GOST_RELEASE_TAG}/gost}"
+GOST_SHA256="${GOST_SHA256:-}"
 INSTALL_DIR="/etc/gost"
 COUNTRY=$(curl -s https://ipinfo.io/country)
 if [ "$COUNTRY" = "CN" ]; then
@@ -8,7 +11,23 @@ if [ "$COUNTRY" = "CN" ]; then
     DOWNLOAD_URL="https://ghfast.top/${DOWNLOAD_URL}"
 fi
 
-
+verify_gost_sha256() {
+  local file="$1"
+  if [[ -z "$GOST_SHA256" ]]; then
+    echo "❌ 缺少 GOST_SHA256，拒绝安装未校验的 gost 二进制"
+    echo "请从可信 release 页面复制 SHA256 后执行：GOST_SHA256=<sha256> ./install.sh"
+    exit 1
+  fi
+  local actual
+  actual=$(sha256sum "$file" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$file" | awk '{print $1}')
+  if [[ "$actual" != "$GOST_SHA256" ]]; then
+    echo "❌ gost SHA256 校验失败"
+    echo "期望: $GOST_SHA256"
+    echo "实际: $actual"
+    rm -f "$file"
+    exit 1
+  fi
+}
 
 # 显示菜单
 show_menu() {
@@ -153,7 +172,8 @@ install_gost() {
 
   # 下载 gost
   echo "⬇️ 下载 gost 中..."
-  curl -L "$DOWNLOAD_URL" -o "$INSTALL_DIR/gost"
+  curl -fL --proto '=https' --tlsv1.2 "$DOWNLOAD_URL" -o "$INSTALL_DIR/gost"
+  verify_gost_sha256 "$INSTALL_DIR/gost"
   if [[ ! -f "$INSTALL_DIR/gost" || ! -s "$INSTALL_DIR/gost" ]]; then
     echo "❌ 下载失败，请检查网络或下载链接。"
     exit 1
@@ -237,7 +257,8 @@ update_gost() {
   
   # 先下载新版本
   echo "⬇️ 下载最新版本..."
-  curl -L "$DOWNLOAD_URL" -o "$INSTALL_DIR/gost.new"
+  curl -fL --proto '=https' --tlsv1.2 "$DOWNLOAD_URL" -o "$INSTALL_DIR/gost.new"
+  verify_gost_sha256 "$INSTALL_DIR/gost.new"
   if [[ ! -f "$INSTALL_DIR/gost.new" || ! -s "$INSTALL_DIR/gost.new" ]]; then
     echo "❌ 下载失败。"
     return 1
